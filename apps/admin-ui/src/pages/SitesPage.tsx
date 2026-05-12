@@ -3,7 +3,7 @@ import { useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 
 import { createSiteGroup, deleteSiteGroup, listSiteGroups } from '../api/site-groups';
-import { listSites, updateSite } from '../api/sites';
+import { deleteSite, listSites, updateSite } from '../api/sites';
 import CreateSiteModal from '../components/CreateSiteModal';
 import { Button } from '../components/ui/button.tsx';
 import { Badge } from '../components/ui/badge.tsx';
@@ -21,6 +21,7 @@ export default function SitesPage() {
   const [showCreateGroup, setShowCreateGroup] = useState(false);
   const [newGroupName, setNewGroupName] = useState('');
   const [createGroupError, setCreateGroupError] = useState('');
+  const [removeSiteError, setRemoveSiteError] = useState('');
   const { data: sites, isLoading: sitesLoading, error: sitesError } = useQuery({
     queryKey: ['sites'],
     queryFn: listSites,
@@ -60,6 +61,25 @@ export default function SitesPage() {
       queryClient.invalidateQueries({ queryKey: ['site-groups'] });
     },
   });
+
+  const deleteSiteMutation = useMutation({
+    mutationFn: deleteSite,
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['sites'] });
+      queryClient.invalidateQueries({ queryKey: ['site-groups'] });
+      setRemoveSiteError('');
+    },
+    onError: () => {
+      setRemoveSiteError('Failed to remove site. Please try again.');
+    },
+  });
+
+  const handleRemoveSite = (site: Site) => {
+    const label = site.display_name || site.name || site.domain;
+    if (confirm(`Remove site "${label}"? This will hide it from your active sites.`)) {
+      deleteSiteMutation.mutate(site.id);
+    }
+  };
 
   // Group sites by site_group_id
   const { groupedSites, ungroupedSites } = useMemo(() => {
@@ -107,6 +127,12 @@ export default function SitesPage() {
         </Alert>
       )}
 
+      {removeSiteError && (
+        <Alert variant="error" className="mb-4">
+          {removeSiteError}
+        </Alert>
+      )}
+
       {!isLoading && sites && sites.length === 0 && (!groups || groups.length === 0) && (
         <EmptyState message="No sites yet. Add your first site to get started." />
       )}
@@ -132,6 +158,7 @@ export default function SitesPage() {
               onMoveSite={(siteId, groupId) =>
                 assignGroupMutation.mutate({ siteId, groupId })
               }
+              onDeleteSite={handleRemoveSite}
             />
           ))}
 
@@ -149,6 +176,7 @@ export default function SitesPage() {
                 onAssignGroup={(siteId, groupId) =>
                   assignGroupMutation.mutate({ siteId, groupId })
                 }
+                onDeleteSite={handleRemoveSite}
               />
             </div>
           )}
@@ -218,6 +246,7 @@ function GroupSection({
   onDelete,
   onRemoveSite,
   onMoveSite,
+  onDeleteSite,
 }: {
   group: SiteGroup;
   sites: Site[];
@@ -226,6 +255,7 @@ function GroupSection({
   onDelete: () => void;
   onRemoveSite: (siteId: string) => void;
   onMoveSite: (siteId: string, groupId: string) => void;
+  onDeleteSite: (site: Site) => void;
 }) {
   return (
     <div>
@@ -258,6 +288,7 @@ function GroupSection({
           currentGroupId={group.id}
           onRemoveFromGroup={onRemoveSite}
           onAssignGroup={onMoveSite}
+          onDeleteSite={onDeleteSite}
         />
       ) : (
         <EmptyState message="No sites in this group yet" />
@@ -274,12 +305,14 @@ function SiteTable({
   currentGroupId,
   onRemoveFromGroup,
   onAssignGroup,
+  onDeleteSite,
 }: {
   sites: Site[];
   groups: SiteGroup[];
   currentGroupId?: string;
   onRemoveFromGroup?: (siteId: string) => void;
   onAssignGroup?: (siteId: string, groupId: string) => void;
+  onDeleteSite: (site: Site) => void;
 }) {
   return (
     <div className="overflow-hidden rounded-lg border border-border bg-card shadow-sm">
@@ -323,12 +356,21 @@ function SiteTable({
                   />
                 </td>
                 <td className="px-4 py-3 text-right lg:px-6">
-                  <Link
-                    to={`/sites/${site.id}`}
-                    className="text-sm font-medium text-copper hover:text-copper/80"
-                  >
-                    Manage
-                  </Link>
+                  <div className="flex items-center justify-end gap-3">
+                    <Link
+                      to={`/sites/${site.id}`}
+                      className="text-sm font-medium text-copper hover:text-copper/80"
+                    >
+                      Manage
+                    </Link>
+                    <button
+                      type="button"
+                      onClick={() => onDeleteSite(site)}
+                      className="text-sm font-medium text-status-error-fg hover:text-status-error-fg/80"
+                    >
+                      Remove
+                    </button>
+                  </div>
                 </td>
               </tr>
             ))}
@@ -359,12 +401,21 @@ function SiteTable({
                 onRemove={onRemoveFromGroup}
                 onAssign={onAssignGroup}
               />
-              <Link
-                to={`/sites/${site.id}`}
-                className="text-sm font-medium text-copper hover:text-copper/80"
-              >
-                Manage
-              </Link>
+              <div className="flex items-center gap-3">
+                <Link
+                  to={`/sites/${site.id}`}
+                  className="text-sm font-medium text-copper hover:text-copper/80"
+                >
+                  Manage
+                </Link>
+                <button
+                  type="button"
+                  onClick={() => onDeleteSite(site)}
+                  className="text-sm font-medium text-status-error-fg hover:text-status-error-fg/80"
+                >
+                  Remove
+                </button>
+              </div>
             </div>
           </div>
         ))}
