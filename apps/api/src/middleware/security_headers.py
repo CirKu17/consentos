@@ -5,7 +5,7 @@ Adds standard security headers to all API responses:
   - X-Frame-Options: DENY
   - X-XSS-Protection: 0 (disabled in favour of CSP)
   - Referrer-Policy: strict-origin-when-cross-origin
-  - Content-Security-Policy: default-src 'none'
+  - Content-Security-Policy: default-src 'none' for API responses
   - Strict-Transport-Security (HSTS) in production
 """
 
@@ -31,9 +31,19 @@ class SecurityHeadersMiddleware(BaseHTTPMiddleware):
         response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
 
         # The consent bridge must be embeddable as a cross-origin iframe
-        # for cross-domain consent sharing. All other endpoints deny framing.
+        # for cross-domain consent sharing. FastAPI's docs pages need a
+        # narrow exception because Swagger UI/ReDoc load scripts and styles.
         if request.url.path == "/consent-bridge":
             response.headers["Content-Security-Policy"] = "default-src 'unsafe-inline'"
+        elif request.url.path in {"/docs", "/redoc"}:
+            response.headers["X-Frame-Options"] = "DENY"
+            response.headers["Content-Security-Policy"] = (
+                "default-src 'none'; "
+                "script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net; "
+                "style-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net; "
+                "img-src 'self' data: https://fastapi.tiangolo.com; "
+                "connect-src 'self'"
+            )
         else:
             response.headers["X-Frame-Options"] = "DENY"
             response.headers["Content-Security-Policy"] = "default-src 'none'"

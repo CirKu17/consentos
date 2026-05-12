@@ -45,6 +45,15 @@ class TestSecurityHeaders:
         assert resp.headers["content-security-policy"] == "default-src 'none'"
 
     @pytest.mark.asyncio
+    async def test_docs_content_security_policy_allows_docs_assets(self, client):
+        resp = await client.get("/docs")
+        csp = resp.headers["content-security-policy"]
+        assert "default-src 'none'" in csp
+        assert "script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net" in csp
+        assert "style-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net" in csp
+        assert "connect-src 'self'" in csp
+
+    @pytest.mark.asyncio
     async def test_no_hsts_on_http(self, client):
         resp = await client.get("/health")
         assert "strict-transport-security" not in resp.headers
