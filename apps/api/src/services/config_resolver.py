@@ -55,6 +55,10 @@ SYSTEM_DEFAULTS: dict[str, Any] = {
     # narrow this to a subset. The resolver normalises the result
     # via ``_normalise_enabled_categories``.
     "enabled_categories": ALL_CATEGORIES,
+    # IAB vendor IDs disclosed in the CMP UI (TCF v2.3 DisclosedVendors
+    # segment). Empty by default — operators set this explicitly via
+    # the admin UI's vendor picker, normally backed by the synced GVL.
+    "disclosed_vendor_ids": [],
 }
 
 
@@ -128,10 +132,24 @@ def _normalise_enabled_categories(value: Any) -> list[str]:
 def build_public_config(
     site_id: str,
     resolved: dict[str, Any],
+    *,
+    gvl_version: int | None = None,
+    category_tcf_purposes: dict[str, list[int]] | None = None,
 ) -> dict[str, Any]:
     """Build a public configuration JSON for the banner script.
 
     Strips internal fields and adds the site_id for identification.
+
+    Args:
+        site_id: ID of the site (echoed into the payload for the banner).
+        resolved: Output of ``resolve_config``.
+        gvl_version: Current IAB GVL version from ``iab_gvl_meta``.
+            Surfaced so the banner can stamp it onto generated TC strings;
+            ``None`` when the GVL hasn't been synced yet.
+        category_tcf_purposes: Cookie-category slug → list of TCF purpose
+            IDs. The banner translates accepted categories into TCF
+            purposes when building TCData. Empty when TCF mapping isn't
+            populated on the cookie_categories rows.
     """
     return {
         "id": resolved.get("id", ""),
@@ -156,8 +174,30 @@ def build_public_config(
         # Public name is ``enabled_categories`` here; the banner schema
         # converts that to ``enabledCategories`` when it serialises.
         "enabled_categories": _normalise_enabled_categories(resolved.get("enabled_categories")),
+        "disclosed_vendor_ids": _normalise_disclosed_vendor_ids(
+            resolved.get("disclosed_vendor_ids")
+        ),
+        "gvl_version": gvl_version,
+        "category_tcf_purposes": category_tcf_purposes or {},
         "consent_bridge_url": resolved.get("consent_bridge_url"),
     }
+
+
+def _normalise_disclosed_vendor_ids(value: Any) -> list[int]:
+    """Coerce a cascade-resolved value into a sorted list of unique int IDs.
+
+    JSONB columns can survive round-trips containing strings ("1") or
+    other junk; we strip anything non-int, dedupe, and sort so the
+    banner gets a deterministic shape regardless of how the operator
+    populated the field.
+    """
+    if not isinstance(value, list):
+        return []
+    seen: set[int] = set()
+    for item in value:
+        if isinstance(item, int) and not isinstance(item, bool) and item > 0:
+            seen.add(item)
+    return sorted(seen)
 
 
 CONFIG_FIELDS = (
@@ -178,6 +218,7 @@ CONFIG_FIELDS = (
     "terms_url",
     "consent_expiry_days",
     "enabled_categories",
+    "disclosed_vendor_ids",
     "consent_sharing_enabled",
     "consent_bridge_url",
 )

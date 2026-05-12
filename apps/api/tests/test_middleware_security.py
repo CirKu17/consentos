@@ -72,3 +72,21 @@ class TestSecurityHeaders:
         resp = await client.get("/this-does-not-exist")
         assert resp.headers["x-content-type-options"] == "nosniff"
         assert resp.headers["x-frame-options"] == "DENY"
+
+    @pytest.mark.asyncio
+    async def test_docs_gets_relaxed_csp(self, client):
+        resp = await client.get("/docs")
+        csp = resp.headers["content-security-policy"]
+        assert "default-src 'none'" not in csp
+        assert "cdn.jsdelivr.net" in csp
+        assert resp.headers["x-frame-options"] == "DENY"
+
+    @pytest.mark.asyncio
+    async def test_openapi_json_gets_relaxed_csp(self, client):
+        resp = await client.get("/openapi.json")
+        assert "default-src 'none'" not in resp.headers["content-security-policy"]
+
+    @pytest.mark.asyncio
+    async def test_api_endpoints_still_get_strict_csp(self, client):
+        resp = await client.get("/health")
+        assert resp.headers["content-security-policy"] == "default-src 'none'"
